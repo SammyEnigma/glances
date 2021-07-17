@@ -91,6 +91,24 @@ def system_config_dir():
     return path
 
 
+def default_config_dir():
+    r"""Return the system-wide config dir (full path).
+
+    - Linux, SunOS, *BSD, macOS: /usr/share/doc (as defined in the setup.py files)
+    - Windows: %APPDATA%\glances
+    """
+    if LINUX or SUNOS or BSD or MACOS:
+        path = '/usr/share/doc'
+    else:
+        path = os.environ.get('APPDATA')
+    if path is None:
+        path = ''
+    else:
+        path = os.path.join(path, 'glances')
+
+    return path
+
+
 class Config(object):
 
     """This class is used to access/read config file, if it exists.
@@ -129,6 +147,7 @@ class Config(object):
             * /path/to/file (via -C flag)
             * user's home directory (per-user settings)
             * system-wide directory (system-wide settings)
+            * default pip directory (as defined in the setup.py file)
         """
         paths = []
 
@@ -137,13 +156,14 @@ class Config(object):
 
         paths.append(os.path.join(user_config_dir(), self.config_filename))
         paths.append(os.path.join(system_config_dir(), self.config_filename))
+        paths.append(os.path.join(default_config_dir(), self.config_filename))
 
         return paths
 
     def read(self):
         """Read the config file, if it exists. Using defaults otherwise."""
         for config_file in self.config_file_paths():
-            logger.info('Search glances.conf file in {}'.format(config_file))
+            logger.debug('Search glances.conf file in {}'.format(config_file))
             if os.path.exists(config_file):
                 try:
                     with open(config_file, encoding='utf-8') as f:
@@ -293,7 +313,7 @@ class Config(object):
         If it did not exist, then return the default value.
 
         It allows user to define dynamic configuration key (see issue#1204)
-        Dynamic vlaue should starts and end with the ` char
+        Dynamic value should starts and end with the ` char
         Example: prefix=`hostname`
         """
         ret = default

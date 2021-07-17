@@ -44,6 +44,10 @@ if PY3:
     from urllib.error import HTTPError, URLError
     from urllib.parse import urlparse
 
+    # Correct issue #1025 by monkey path the xmlrpc lib
+    from defusedxml.xmlrpc import monkey_patch
+    monkey_patch()
+
     input = input
     range = range
     map = map
@@ -113,7 +117,7 @@ if PY3:
             return s.decode('utf-8', errors=errors)
 
     def system_exec(command):
-        """Execute a system command and return the resul as a str"""
+        """Execute a system command and return the result as a str"""
         try:
             res = subprocess.run(command.split(' '),
                                  stdout=subprocess.PIPE).stdout.decode('utf-8')
@@ -131,6 +135,10 @@ else:
     from xmlrpclib import Fault, ProtocolError, ServerProxy, Transport, Server
     from urllib2 import urlopen, HTTPError, URLError
     from urlparse import urlparse
+
+    # Correct issue #1025 by monkey path the xmlrpc lib
+    from defusedxml.xmlrpc import monkey_patch
+    monkey_patch()
 
     input = raw_input
     range = xrange
@@ -229,7 +237,7 @@ def time_serie_subsample(data, sampling):
 
     Data should be a list of set (time, value)
 
-    Return a subsampled list of sampling lenght
+    Return a subsampled list of sampling length
     """
     if len(data) <= sampling:
         return data
@@ -268,3 +276,30 @@ def is_admin():
     else:
         # Check for root on Posix
         return os.getuid() == 0
+
+
+def key_exist_value_not_none(k, d):
+    # Return True if:
+    # - key k exists
+    # - d[k] is not None
+    return k in d and d[k] is not None
+
+
+def key_exist_value_not_none_not_v(k, d, v=''):
+    # Return True if:
+    # - key k exists
+    # - d[k] is not None
+    # - d[k] != v
+    return k in d and d[k] is not None and d[k] != v
+
+
+def disable(class_name, var):
+    """Set disable_<var> to True in the class class_name."""
+    setattr(class_name, 'enable_' + var, False)
+    setattr(class_name, 'disable_' + var, True)
+
+
+def enable(class_name, var):
+    """Set disable_<var> to False in the class class_name."""
+    setattr(class_name, 'enable_' + var, True)
+    setattr(class_name, 'disable_' + var, False)

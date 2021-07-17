@@ -27,15 +27,6 @@ from glances.plugins.glances_plugin import GlancesPlugin
 
 import psutil
 
-# Import plugin specific dependency
-try:
-    from cpuinfo import cpuinfo
-except ImportError as e:
-    cpuinfo_tag = False
-    logger.warning("Missing Python Lib ({}), Quicklook plugin will not display CPU info".format(e))
-else:
-    cpuinfo_tag = True
-
 
 # Define the history items list
 # All items in this list will be historised if the --enable-history tag is set
@@ -79,6 +70,7 @@ class Plugin(GlancesPlugin):
             # Get the latest CPU percent value
             stats['cpu'] = cpu_percent.get()
             stats['percpu'] = cpu_percent.get(percpu=True)
+
             # Use the psutil lib for the memory (virtual and swap)
             stats['mem'] = psutil.virtual_memory().percent
             try:
@@ -86,29 +78,16 @@ class Plugin(GlancesPlugin):
             except RuntimeError:
                 # Correct issue in Illumos OS (see #1767)
                 stats['swap'] = None
+
+            # Get additional information
+            cpu_info = cpu_percent.get_info()
+            stats['cpu_name'] = cpu_info['cpu_name']
+            stats['cpu_hz_current'] = self._mhz_to_hz(cpu_info['cpu_hz_current']) if cpu_info['cpu_hz_current'] is not None else None
+            stats['cpu_hz'] = self._mhz_to_hz(cpu_info['cpu_hz']) if cpu_info['cpu_hz'] is not None else None
+
         elif self.input_method == 'snmp':
             # Not available
             pass
-
-        # Optionnaly, get the CPU name/frequency
-        # thanks to the cpuinfo lib: https://github.com/workhorsy/py-cpuinfo
-        if cpuinfo_tag:
-            cpu_info = cpuinfo.get_cpu_info()
-            #  Check cpu_info (issue #881)
-            if cpu_info is not None:
-                # Use brand_raw if the key exist (issue #1685)
-                if cpu_info.get('brand_raw') is not None:
-                    stats['cpu_name'] = cpu_info.get('brand_raw', 'CPU')
-                else:
-                    stats['cpu_name'] = cpu_info.get('brand', 'CPU')
-                if 'hz_actual_raw' in cpu_info:
-                    stats['cpu_hz_current'] = cpu_info['hz_actual_raw'][0]
-                elif 'hz_actual' in cpu_info:
-                    stats['cpu_hz_current'] = cpu_info['hz_actual'][0]
-                if 'hz_advertised_raw' in cpu_info:
-                    stats['cpu_hz'] = cpu_info['hz_advertised_raw'][0]
-                elif 'hz_advertised' in cpu_info:
-                    stats['cpu_hz'] = cpu_info['hz_advertised'][0]
 
         # Update the stats
         self.stats = stats
@@ -137,7 +116,7 @@ class Plugin(GlancesPlugin):
 
         # Define the data: Bar (default behavor) or Sparkline
         sparkline_tag = False
-        if self.args.sparkline and self.history_enable():
+        if self.args.sparkline and self.history_enable() and not self.args.client:
             data = Sparkline(max_width)
             sparkline_tag = data.available
         if not sparkline_tag:
@@ -148,9 +127,12 @@ class Plugin(GlancesPlugin):
 
         # Build the string message
         if 'cpu_name' in self.stats and 'cpu_hz_current' in self.stats and 'cpu_hz' in self.stats:
-            msg_name = '{} - '.format(self.stats['cpu_name'])
-            msg_freq = '{:.2f}/{:.2f}GHz'.format(self._hz_to_ghz(self.stats['cpu_hz_current']),
-                                                 self._hz_to_ghz(self.stats['cpu_hz']))
+            msg_name = self.stats['cpu_name']
+            if self.stats['cpu_hz_current'] and self.stats['cpu_hz']:
+                msg_freq = ' - {:.2f}/{:.2f}GHz'.format(self._hz_to_ghz(self.stats['cpu_hz_current']),
+                                                        self._hz_to_ghz(self.stats['cpu_hz']))
+            else:
+                msg_freq = ''
             if len(msg_name + msg_freq) - 6 <= max_width:
                 ret.append(self.curse_add_line(msg_name))
             ret.append(self.curse_add_line(msg_freq))
@@ -208,3 +190,7 @@ class Plugin(GlancesPlugin):
     def _hz_to_ghz(self, hz):
         """Convert Hz to Ghz."""
         return hz / 1000000000.0
+
+    def _mhz_to_hz(self, hz):
+        """Convert Mhz to Hz."""
+        return hz * 1000000.0

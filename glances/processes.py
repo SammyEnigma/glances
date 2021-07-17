@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2019 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2021 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -17,11 +17,10 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import operator
 import os
 
-from glances.compat import iteritems, itervalues, listitems, iterkeys
-from glances.globals import BSD, LINUX, MACOS, SUNOS, WINDOWS, WSL
+from glances.compat import iterkeys
+from glances.globals import BSD, LINUX, MACOS, WINDOWS
 from glances.timer import Timer, getTimeSinceLastUpdate
 from glances.filter import GlancesFilter
 from glances.logger import logger
@@ -41,7 +40,8 @@ class GlancesProcesses(object):
 
         # The internals caches will be cleaned each 'cache_timeout' seconds
         self.cache_timeout = cache_timeout
-        self.cache_timer = Timer(self.cache_timeout)
+        # First iteration, no cache
+        self.cache_timer = Timer(0)
 
         # Init the io dict
         # key = pid
@@ -56,6 +56,9 @@ class GlancesProcesses(object):
         self.set_sort_key('auto', auto=True)
         self.processlist = []
         self.reset_processcount()
+
+        # Cache is a dict with key=pid and value = dict of cached value
+        self.processlist_cache = {}
 
         # Tag to enable/disable the processes stats (to reduce the Glances CPU consumption)
         # Default is to enable the processes stats
@@ -261,25 +264,40 @@ class GlancesProcesses(object):
 
         # Grab standard stats
         #####################
-        standard_attrs = ['cmdline', 'cpu_percent', 'cpu_times', 'memory_info',
-                          'memory_percent', 'name', 'nice', 'pid', 'ppid',
-                          'status', 'username', 'status', 'num_threads']
-        if not self.disable_io_counters:
-            standard_attrs += ['io_counters']
-        if not self.disable_gids:
-            standard_attrs += ['gids']
+        sorted_attrs = ['cpu_percent', 'cpu_times',
+                          'memory_percent', 'name',
+                          'status', 'status', 'num_threads']
+        displayed_attr = ['memory_info', 'nice', 'pid', 'ppid']
+        cached_attrs = ['cmdline', 'username']
 
-        # and build the processes stats list (psutil>=5.3.0)
-        self.processlist = [p.info for p in psutil.process_iter(attrs=standard_attrs,
-                                                                ad_value=None)
+        # Some stats are optionals
+        if not self.disable_io_counters:
+            sorted_attrs.append('io_counters')
+        if not self.disable_gids:
+            displayed_attr.append('gids')
+        # Some stats are not sort key
+        # An optimisation can be done be only grabed displayed_attr
+        # for displayed processes (but only in standalone mode...)
+        sorted_attrs.extend(displayed_attr)
+        # Some stats are cached (not necessary to be refreshed every time)
+        if self.cache_timer.finished():
+            sorted_attrs += cached_attrs
+            self.cache_timer.set(self.cache_timeout)
+            self.cache_timer.reset()
+            is_cached = False
+        else:
+            is_cached = True
+
+        # Build the processes stats list (it is why we need psutil>=5.3.0)
+        self.processlist = [p.info
+                            for p in psutil.process_iter(attrs=sorted_attrs,
+                                                         ad_value=None)
                             # OS-related processes filter
                             if not (BSD and p.info['name'] == 'idle') and
                             not (WINDOWS and p.info['name'] == 'System Idle Process') and
                             not (MACOS and p.info['name'] == 'kernel_task') and
                             # Kernel threads filter
-                            not (self.no_kernel_threads and LINUX and p.info['gids'].real == 0) and
-                            # User filter
-                            not (self._filter.is_filtered(p.info))]
+                            not (self.no_kernel_threads and LINUX and p.info['gids'].real == 0)]
 
         # Sort the processes list by the current sort_key
         self.processlist = sort_stats(self.processlist,
@@ -345,6 +363,9 @@ class GlancesProcesses(object):
             first = False
             # /End of extended stats
 
+            # PID is the key
+            proc['key'] = 'pid'
+
             # Time since last update (for disk_io rate computation)
             proc['time_since_update'] = time_since_update
 
@@ -375,6 +396,27 @@ class GlancesProcesses(object):
             # Append the IO tag (for display)
             proc['io_counters'] += [io_tag]
 
+            # Manage cached information
+            if is_cached:
+                # Grab cached values (in case of a new incoming process)
+                if proc['pid'] not in self.processlist_cache:
+                    try:
+                        self.processlist_cache[proc['pid']]= psutil.Process(pid=proc['pid']).as_dict(attrs=cached_attrs,
+                                                                                                    ad_value=None)
+                    except psutil.NoSuchProcess:
+                        pass
+                # Add cached value to current stat
+                try:
+                    proc.update(self.processlist_cache[proc['pid']])
+                except KeyError:
+                    pass
+            else:
+                # Save values to cache
+                self.processlist_cache[proc['pid']] = { cached: proc[cached] for cached in cached_attrs }
+
+        # Apply filter
+        self.processlist = [p for p in self.processlist if not (self._filter.is_filtered(p))]
+
         # Compute the maximum value for keys in self._max_values_list: CPU, MEM
         # Usefull to highlight the processes with maximum values
         for k in self._max_values_list:
@@ -403,7 +445,7 @@ class GlancesProcesses(object):
         else:
             self.auto_sort = auto
             self._sort_key = key
-    
+
     def kill(self, pid, timeout=3):
         """Kill process with pid"""
         assert pid != os.getpid(), "Glances can kill itself..."

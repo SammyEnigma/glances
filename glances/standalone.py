@@ -30,6 +30,7 @@ from glances.outputs.glances_curses import GlancesCursesStandalone
 from glances.outputs.glances_stdout import GlancesStdout
 from glances.outputs.glances_stdout_csv import GlancesStdoutCsv
 from glances.outputs.glances_stdout_issue import GlancesStdoutIssue
+from glances.outputs.glances_stdout_apidoc import GlancesStdoutApiDoc
 from glances.outdated import Outdated
 from glances.timer import Counter
 
@@ -87,12 +88,16 @@ class GlancesStandalone(object):
             logger.info("Issue mode is ON")
             # Init screen
             self.screen = GlancesStdoutIssue(config=config, args=args)
+        elif args.stdout_apidoc:
+            logger.info("Fields descriptions mode is ON")
+            # Init screen
+            self.screen = GlancesStdoutApiDoc(config=config, args=args)
         elif args.stdout:
             logger.info("Stdout mode is ON, following stats will be displayed: {}".format(args.stdout))
             # Init screen
             self.screen = GlancesStdout(config=config, args=args)
         elif args.stdout_csv:
-            logger.info("Stdout CSV mode is ON, following stats will be displayed: {}".format(args.stdout))
+            logger.info("Stdout CSV mode is ON, following stats will be displayed: {}".format(args.stdout_csv))
             # Init screen
             self.screen = GlancesStdoutCsv(config=config, args=args)
         else:
@@ -129,15 +134,14 @@ class GlancesStandalone(object):
 
         return True if we should continue (no exit key has been pressed)
         """
-        # Start a counter used to compute the time needed for
-        # update and export the stats
-        counter = Counter()
-
         # Update stats
+        # Start a counter used to compute the time needed
+        counter = Counter()
         self.stats.update()
         logger.debug('Stats updated duration: {} seconds'.format(counter.get()))
 
         # Export stats
+        # Start a counter used to compute the time needed
         counter_export = Counter()
         self.stats.export(self.stats)
         logger.debug('Stats exported duration: {} seconds'.format(counter_export.get()))
@@ -151,7 +155,8 @@ class GlancesStandalone(object):
         if not self.quiet:
             # The update function return True if an exit key 'q' or 'ESC'
             # has been pressed.
-            ret = not self.screen.update(self.stats, duration=adapted_refresh)
+            ret = not self.screen.update(self.stats,
+                                         duration=adapted_refresh)
         else:
             # Nothing is displayed
             # Break should be done via a signal (CTRL-C)
@@ -162,9 +167,11 @@ class GlancesStandalone(object):
 
     def serve_forever(self):
         """Wrapper to the serve_forever function."""
-        loop = True
-        while loop:
-            loop = self.__serve_once()
+        # loop = True
+        # while loop:
+        #     loop = self.__serve_once()
+        while self.__serve_once():
+            pass
         self.end()
 
     def end(self):

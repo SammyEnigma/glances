@@ -34,7 +34,7 @@ from glances.history import GlancesHistory
 from glances.logger import logger
 from glances.events import glances_events
 from glances.thresholds import glances_thresholds
-from glances.timer import Counter
+from glances.timer import Counter, Timer
 
 
 class GlancesPlugin(object):
@@ -44,7 +44,8 @@ class GlancesPlugin(object):
                  args=None,
                  config=None,
                  items_history_list=None,
-                 stats_init_value={}):
+                 stats_init_value={},
+                 fields_description=None):
         """Init the plugin of plugins class.
 
         All Glances' plugins should inherit from this class. Most of the
@@ -104,6 +105,12 @@ class GlancesPlugin(object):
         self.hide_zero = False
         self.hide_zero_fields = []
 
+        # Set the initial refresh time to display stats the first time
+        self.refresh_timer = Timer(0)
+
+        # Init stats description
+        self.fields_description = fields_description
+
         # Init the stats
         self.stats_init_value = stats_init_value
         self.stats = None
@@ -143,9 +150,8 @@ class GlancesPlugin(object):
         try:
             d = getattr(self.args, 'disable_' + plugin_name)
         except AttributeError:
-            return True
-        else:
-            return d is False
+            d = getattr(self.args, 'enable_' + plugin_name, True)
+        return d is False
 
     def is_disable(self, plugin_name=None):
         """Return true if plugin is disabled."""
@@ -162,7 +168,9 @@ class GlancesPlugin(object):
             return json.dumps(d, ensure_ascii=False)
 
     def history_enable(self):
-        return self.args is not None and not self.args.disable_history and self.get_items_history_list() is not None
+        return self.args is not None and \
+               not self.args.disable_history and \
+               self.get_items_history_list() is not None
 
     def init_stats_history(self):
         """Init the stats history (dict of GlancesAttribute)."""
@@ -192,10 +200,10 @@ class GlancesPlugin(object):
                     # Stats is a list of data
                     # Iter throught it (for exemple, iter throught network
                     # interface)
-                    for l in self.get_export():
+                    for l_export in self.get_export():
                         self.stats_history.add(
-                            nativestr(l[item_name]) + '_' + nativestr(i['name']),
-                            l[i['name']],
+                            nativestr(l_export[item_name]) + '_' + nativestr(i['name']),
+                            l_export[i['name']],
                             description=i['description'],
                             history_max_size=self._limits['history_size'])
                 else:
@@ -306,10 +314,18 @@ class GlancesPlugin(object):
     def sorted_stats(self):
         """Get the stats sorted by an alias (if present) or key."""
         key = self.get_key()
-        return sorted(self.stats, key=lambda stat: tuple(map(
-            lambda part: int(part) if part.isdigit() else part.lower(),
-            re.split(r"(\d+|\D+)", self.has_alias(stat[key]) or stat[key])
-        )))
+        try:
+            return sorted(self.stats, key=lambda stat: tuple(map(
+                lambda part: int(part) if part.isdigit() else part.lower(),
+                re.split(r"(\d+|\D+)", self.has_alias(stat[key]) or stat[key])
+            )))
+        except TypeError:
+            # Correect "Starting an alias with a number causes a crash #1885"
+            return sorted(self.stats, key=lambda stat: tuple(map(
+                lambda part: part.lower(),
+                re.split(r"(\d+|\D+)", self.has_alias(stat[key]) or stat[key])
+            )))
+
 
     @short_system_name.setter
     def short_system_name(self, short_name):
@@ -418,7 +434,7 @@ class GlancesPlugin(object):
         if not isinstance(self.stats, list):
             return None
         else:
-            if value.isdigit():
+            if not isinstance(value, int) and value.isdigit():
                 value = int(value)
             try:
                 return self._json_dumps({value: [i for i in self.stats if i[item] == value]})
@@ -456,11 +472,11 @@ class GlancesPlugin(object):
                     self.views[i[self.get_key(
                     )]][f]['hidden'] = self.views[i[self.get_key()]][f]['_zero'] and i[f] == 0
         elif isinstance(self.get_raw(), dict) and self.get_raw() is not None:
-            # 
-            # Warning: This code has never been tested because 
+            #
+            # Warning: This code has never been tested because
             # no plugin with dict instance use the hidden function...
             #                       vvvv
-            # 
+            #
             # Stats are stored in a dict (ex: CPU, LOAD...)
             for key in listkeys(self.get_raw()):
                 if any([self.get_raw()[f] for f in self.hide_zero_fields]):
@@ -480,7 +496,7 @@ class GlancesPlugin(object):
                 'optional': False,        >>> Is the stat optional
                 'additional': False,      >>> Is the stat provide additional information
                 'splittable': False,      >>> Is the stat can be cut (like process lon name)
-                'hidden': False,          >>> Is the stats should be hidden in the UI 
+                'hidden': False,          >>> Is the stats should be hidden in the UI
                 '_zero': True}            >>> For internal purpose only
         """
         ret = {}
@@ -584,6 +600,32 @@ class GlancesPlugin(object):
     def limits(self, input_limits):
         """Set the limits to input_limits."""
         self._limits = input_limits
+
+    def set_refresh(self, value):
+        """Set the plugin refresh rate"""
+        self.set_limits('refresh', value)
+
+    def get_refresh(self):
+        """Return the plugin refresh time"""
+        ret = self.get_limits(item='refresh')
+        if ret is None:
+            ret = self.args.time
+        return ret
+
+    def get_refresh_time(self):
+        """Return the plugin refresh time"""
+        return self.get_refresh()
+
+    def set_limits(self, item, value):
+        """Set the limits object."""
+        self._limits['{}_{}'.format(self.plugin_name, item)] = value
+
+    def get_limits(self, item=None):
+        """Return the limits object."""
+        if item is None:
+            return self._limits
+        else:
+            return self._limits.get('{}_{}'.format(self.plugin_name, item), None)
 
     def get_stats_action(self):
         """Return stats for the action.
@@ -734,6 +776,13 @@ class GlancesPlugin(object):
                               header=header,
                               action_key=action_key,
                               log=True)
+
+    def is_limit(self, criticity, stat_name=""):
+        """Return true if the criticity limit exist for the given stat_name"""
+        if stat_name == "":
+            return self.plugin_name + '_' + criticity in self._limits
+        else:
+            return stat_name + '_' + criticity in self._limits
 
     def get_limit(self, criticity, stat_name=""):
         """Return the limit value for the alert."""
@@ -901,7 +950,11 @@ class GlancesPlugin(object):
             additional: True if the stat is additional (display only if space is available after optional)
             spittable: Line can be splitted to fit on the screen (default is not)
         """
-        return {'msg': msg, 'decoration': decoration, 'optional': optional, 'additional': additional, 'splittable': splittable}
+        return {'msg': msg,
+                'decoration': decoration,
+                'optional': optional,
+                'additional': additional,
+                'splittable': splittable}
 
     def curse_new_line(self):
         """Go to a new line."""
@@ -987,11 +1040,21 @@ class GlancesPlugin(object):
         return ret
 
     def _check_decorator(fct):
-        """Check if the plugin is enabled."""
+        """Check decorator for update method.
+        It checks:
+        - if the plugin is enabled.
+        - if the refresh_timer is finished
+        """
         def wrapper(self, *args, **kw):
-            if self.is_enable():
+            if self.is_enable() and (self.refresh_timer.finished() or self.stats == self.get_init_value):
+                # Run the method
                 ret = fct(self, *args, **kw)
+                # Reset the timer
+                self.refresh_timer.set(self.get_refresh())
+                self.refresh_timer.reset()
             else:
+                # No need to call the method
+                # Return the last result available
                 ret = self.stats
             return ret
         return wrapper

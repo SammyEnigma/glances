@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2019 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2021 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -29,6 +29,50 @@ from glances.plugins.glances_plugin import GlancesPlugin
 
 import psutil
 
+# Fields description
+fields_description = {
+    'total': {'description': 'Sum of all CPU percentages (except idle).',
+              'unit': 'percent'},
+    'system': {'description': 'percent time spent in kernel space. System CPU time is the \
+time spent running code in the Operating System kernel.',
+               'unit': 'percent'},
+    'user': {'description': 'CPU percent time spent in user space. \
+User CPU time is the time spent on the processor running your program\'s code (or code in libraries).',
+             'unit': 'percent'},
+    'iowait': {'description': '*(Linux)*: percent time spent by the CPU waiting for I/O \
+operations to complete.',
+               'unit': 'percent'},
+    'idle': {'description': 'percent of CPU used by any program. Every program or task \
+that runs on a computer system occupies a certain amount of processing \
+time on the CPU. If the CPU has completed all tasks it is idle.',
+             'unit': 'percent'},
+    'irq': {'description': '*(Linux and BSD)*: percent time spent servicing/handling \
+hardware/software interrupts. Time servicing interrupts (hardware + \
+software).',
+            'unit': 'percent'},
+    'nice': {'description': '*(Unix)*: percent time occupied by user level processes with \
+a positive nice value. The time the CPU has spent running users\' \
+processes that have been *niced*.',
+             'unit': 'percent'},
+    'steal': {'description': '*(Linux)*: percentage of time a virtual CPU waits for a real \
+CPU while the hypervisor is servicing another virtual processor.',
+              'unit': 'percent'},
+    'ctx_switches': {'description': 'number of context switches (voluntary + involuntary) per \
+second. A context switch is a procedure that a computer\'s CPU (central \
+processing unit) follows to change from one task (or process) to \
+another while ensuring that the tasks do not conflict.',
+                     'unit': 'percent'},
+    'interrupts': {'description': 'number of interrupts per second.',
+                   'unit': 'percent'},
+    'soft_interrupts': {'description': 'number of software interrupts per second. Always set to \
+0 on Windows and SunOS.',
+                        'unit': 'percent'},
+    'cpucore': {'description': 'Total number of CPU core.',
+                'unit': 'number'},
+    'time_since_update': {'description': 'Number of seconds since last update.',
+                          'unit': 'seconds'},
+}
+
 # SNMP OID
 # percentage of user CPU time: .1.3.6.1.4.1.2021.11.9.0
 # percentages of system CPU time: .1.3.6.1.4.1.2021.11.10.0
@@ -40,7 +84,7 @@ snmp_oid = {'default': {'user': '1.3.6.1.4.1.2021.11.9.0',
             'esxi': {'percent': '1.3.6.1.2.1.25.3.3.1.2'},
             'netapp': {'system': '1.3.6.1.4.1.789.1.2.1.3.0',
                        'idle': '1.3.6.1.4.1.789.1.2.1.5.0',
-                       'nb_log_core': '1.3.6.1.4.1.789.1.2.1.6.0'}}
+                       'cpucore': '1.3.6.1.4.1.789.1.2.1.6.0'}}
 
 # Define the history items list
 # - 'name' define the stat identifier
@@ -64,7 +108,8 @@ class Plugin(GlancesPlugin):
         """Init the CPU plugin."""
         super(Plugin, self).__init__(args=args,
                                      config=config,
-                                     items_history_list=items_history_list)
+                                     items_history_list=items_history_list,
+                                     fields_description=fields_description)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -79,7 +124,6 @@ class Plugin(GlancesPlugin):
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update CPU stats using the input method."""
-
         # Grab stats into self.stats
         if self.input_method == 'local':
             stats = self.update_local()
@@ -105,39 +149,41 @@ class Plugin(GlancesPlugin):
         stats = self.get_init_value()
 
         stats['total'] = cpu_percent.get()
+        # Grab: 'user', 'system', 'idle', 'nice', 'iowait',
+        #       'irq', 'softirq', 'steal', 'guest', 'guest_nice'
         cpu_times_percent = psutil.cpu_times_percent(interval=0.0)
-        for stat in ['user', 'system', 'idle', 'nice', 'iowait',
-                     'irq', 'softirq', 'steal', 'guest', 'guest_nice']:
-            if hasattr(cpu_times_percent, stat):
-                stats[stat] = getattr(cpu_times_percent, stat)
+        for stat in cpu_times_percent._fields:
+            stats[stat] = getattr(cpu_times_percent, stat)
 
         # Additional CPU stats (number of events not as a %; psutil>=4.1.0)
-        # ctx_switches: number of context switches (voluntary + involuntary) per second
-        # interrupts: number of interrupts per second
-        # soft_interrupts: number of software interrupts per second. Always set to 0 on Windows and SunOS.
-        # syscalls: number of system calls since boot. Always set to 0 on Linux.
+        # - ctx_switches: number of context switches (voluntary + involuntary) since boot.
+        # - interrupts: number of interrupts since boot.
+        # - soft_interrupts: number of software interrupts since boot. Always set to 0 on Windows and SunOS.
+        # - syscalls: number of system calls since boot. Always set to 0 on Linux.
         cpu_stats = psutil.cpu_stats()
+
         # By storing time data we enable Rx/s and Tx/s calculations in the
         # XML/RPC API, which would otherwise be overly difficult work
         # for users of the API
-        time_since_update = getTimeSinceLastUpdate('cpu')
+        stats['time_since_update'] = getTimeSinceLastUpdate('cpu')
+
+        # Core number is needed to compute the CTX switch limit
+        stats['cpucore'] = self.nb_log_core
 
         # Previous CPU stats are stored in the cpu_stats_old variable
         if not hasattr(self, 'cpu_stats_old'):
-            # First call, we init the cpu_stats_old var
-            self.cpu_stats_old = cpu_stats
+            # Init the stats (needed to have the key name for export)
+            for stat in cpu_stats._fields:
+                # @TODO: better to set it to None but should refactor views and UI...
+                stats[stat] = 0
         else:
+            # Others calls...
             for stat in cpu_stats._fields:
                 if getattr(cpu_stats, stat) is not None:
                     stats[stat] = getattr(cpu_stats, stat) - getattr(self.cpu_stats_old, stat)
 
-            stats['time_since_update'] = time_since_update
-
-            # Core number is needed to compute the CTX switch limit
-            stats['cpucore'] = self.nb_log_core
-
-            # Save stats to compute next step
-            self.cpu_stats_old = cpu_stats
+        # Save stats to compute next step
+        self.cpu_stats_old = cpu_stats
 
         return stats
 
@@ -242,11 +288,6 @@ class Plugin(GlancesPlugin):
         msg = '{:5.1f}%'.format(self.stats['total'])
         ret.append(self.curse_add_line(
             msg, self.get_views(key='total', option='decoration')))
-        # if idle_tag:
-        #     ret.append(self.curse_add_line(
-        #         msg, self.get_views(key='total', option='decoration')))
-        # else:
-        #     ret.append(self.curse_add_line(msg))
         # Idle CPU
         if 'idle' in self.stats and not idle_tag:
             msg = '  {:8}'.format('idle:')

@@ -556,14 +556,15 @@ function updateLink (link, options, obj) {
   var undefined;
 
   /** Used as the semantic version number. */
-  var VERSION = '4.17.19';
+  var VERSION = '4.17.21';
 
   /** Used as the size to enable large array optimizations. */
   var LARGE_ARRAY_SIZE = 200;
 
   /** Error message constants. */
   var CORE_ERROR_TEXT = 'Unsupported core-js use. Try https://npms.io/search?q=ponyfill.',
-      FUNC_ERROR_TEXT = 'Expected a function';
+      FUNC_ERROR_TEXT = 'Expected a function',
+      INVALID_TEMPL_VAR_ERROR_TEXT = 'Invalid `variable` option passed into `_.template`';
 
   /** Used to stand-in for `undefined` hash values. */
   var HASH_UNDEFINED = '__lodash_hash_undefined__';
@@ -696,10 +697,11 @@ function updateLink (link, options, obj) {
   var reRegExpChar = /[\\^$.*+?()[\]{}|]/g,
       reHasRegExpChar = RegExp(reRegExpChar.source);
 
-  /** Used to match leading and trailing whitespace. */
-  var reTrim = /^\s+|\s+$/g,
-      reTrimStart = /^\s+/,
-      reTrimEnd = /\s+$/;
+  /** Used to match leading whitespace. */
+  var reTrimStart = /^\s+/;
+
+  /** Used to match a single whitespace character. */
+  var reWhitespace = /\s/;
 
   /** Used to match wrap detail comments. */
   var reWrapComment = /\{(?:\n\/\* \[wrapped with .+\] \*\/)?\n?/,
@@ -708,6 +710,18 @@ function updateLink (link, options, obj) {
 
   /** Used to match words composed of alphanumeric characters. */
   var reAsciiWord = /[^\x00-\x2f\x3a-\x40\x5b-\x60\x7b-\x7f]+/g;
+
+  /**
+   * Used to validate the `validate` option in `_.template` variable.
+   *
+   * Forbids characters which could potentially change the meaning of the function argument definition:
+   * - "()," (modification of function parameters)
+   * - "=" (default value)
+   * - "[]{}" (destructuring of function parameters)
+   * - "/" (beginning of a comment)
+   * - whitespace
+   */
+  var reForbiddenIdentifierChars = /[()=,{}\[\]\/\s]/;
 
   /** Used to match backslashes in property paths. */
   var reEscapeChar = /\\(\\)?/g;
@@ -1538,6 +1552,19 @@ function updateLink (link, options, obj) {
   }
 
   /**
+   * The base implementation of `_.trim`.
+   *
+   * @private
+   * @param {string} string The string to trim.
+   * @returns {string} Returns the trimmed string.
+   */
+  function baseTrim(string) {
+    return string
+      ? string.slice(0, trimmedEndIndex(string) + 1).replace(reTrimStart, '')
+      : string;
+  }
+
+  /**
    * The base implementation of `_.unary` without support for storing metadata.
    *
    * @private
@@ -1868,6 +1895,21 @@ function updateLink (link, options, obj) {
     return hasUnicode(string)
       ? unicodeToArray(string)
       : asciiToArray(string);
+  }
+
+  /**
+   * Used by `_.trim` and `_.trimEnd` to get the index of the last non-whitespace
+   * character of `string`.
+   *
+   * @private
+   * @param {string} string The string to inspect.
+   * @returns {number} Returns the index of the last non-whitespace character.
+   */
+  function trimmedEndIndex(string) {
+    var index = string.length;
+
+    while (index-- && reWhitespace.test(string.charAt(index))) {}
+    return index;
   }
 
   /**
@@ -13038,7 +13080,7 @@ function updateLink (link, options, obj) {
       if (typeof value != 'string') {
         return value === 0 ? value : +value;
       }
-      value = value.replace(reTrim, '');
+      value = baseTrim(value);
       var isBinary = reIsBinary.test(value);
       return (isBinary || reIsOctal.test(value))
         ? freeParseInt(value.slice(2), isBinary ? 2 : 8)
@@ -15410,6 +15452,12 @@ function updateLink (link, options, obj) {
       if (!variable) {
         source = 'with (obj) {\n' + source + '\n}\n';
       }
+      // Throw an error if a forbidden character was found in `variable`, to prevent
+      // potential command injection attacks.
+      else if (reForbiddenIdentifierChars.test(variable)) {
+        throw new Error(INVALID_TEMPL_VAR_ERROR_TEXT);
+      }
+
       // Cleanup code by stripping empty strings.
       source = (isEvaluating ? source.replace(reEmptyStringLeading, '') : source)
         .replace(reEmptyStringMiddle, '$1')
@@ -15523,7 +15571,7 @@ function updateLink (link, options, obj) {
     function trim(string, chars, guard) {
       string = toString(string);
       if (string && (guard || chars === undefined)) {
-        return string.replace(reTrim, '');
+        return baseTrim(string);
       }
       if (!string || !(chars = baseToString(chars))) {
         return string;
@@ -15558,7 +15606,7 @@ function updateLink (link, options, obj) {
     function trimEnd(string, chars, guard) {
       string = toString(string);
       if (string && (guard || chars === undefined)) {
-        return string.replace(reTrimEnd, '');
+        return string.slice(0, trimmedEndIndex(string) + 1);
       }
       if (!string || !(chars = baseToString(chars))) {
         return string;
@@ -16132,7 +16180,7 @@ function updateLink (link, options, obj) {
      * // => [{ 'a': 4, 'b': 5, 'c': 6 }]
      *
      * // Checking for several possible values
-     * _.filter(users, _.overSome([_.matches({ 'a': 1 }), _.matches({ 'a': 4 })]));
+     * _.filter(objects, _.overSome([_.matches({ 'a': 1 }), _.matches({ 'a': 4 })]));
      * // => [{ 'a': 1, 'b': 2, 'c': 3 }, { 'a': 4, 'b': 5, 'c': 6 }]
      */
     function matches(source) {
@@ -16169,7 +16217,7 @@ function updateLink (link, options, obj) {
      * // => { 'a': 4, 'b': 5, 'c': 6 }
      *
      * // Checking for several possible values
-     * _.filter(users, _.overSome([_.matchesProperty('a', 1), _.matchesProperty('a', 4)]));
+     * _.filter(objects, _.overSome([_.matchesProperty('a', 1), _.matchesProperty('a', 4)]));
      * // => [{ 'a': 1, 'b': 2, 'c': 3 }, { 'a': 4, 'b': 5, 'c': 6 }]
      */
     function matchesProperty(path, srcValue) {
@@ -58457,7 +58505,8 @@ function GlancesPluginGpuController($scope, GlancesStats, ARGUMENTS) {
         vm.name = "GPU";
         vm.mean = {
             proc: null,
-            mem: null
+            mem: null,
+            temperature: null
         };
         var sameName = true;
 
@@ -58468,6 +58517,7 @@ function GlancesPluginGpuController($scope, GlancesStats, ARGUMENTS) {
 
             vm.mean.proc += gpu.proc;
             vm.mean.mem += gpu.mem;
+            vm.mean.temperature += gpu.temperature;
 
             vm.gpus.push(gpu);
         }
@@ -58480,6 +58530,7 @@ function GlancesPluginGpuController($scope, GlancesStats, ARGUMENTS) {
 
         vm.mean.proc = vm.mean.proc / stats.length;
         vm.mean.mem = vm.mean.mem / stats.length;
+        vm.mean.temperature = vm.mean.temperature / stats.length;
     }
 
     vm.getDecoration = function (gpuId, value) {
@@ -58501,7 +58552,7 @@ function GlancesPluginGpuController($scope, GlancesStats, ARGUMENTS) {
 /***/ (function(module, exports) {
 
 var path = '/home/nicolargo/dev/glances/glances/outputs/static/js/components/plugin-gpu/view.html';
-var html = "<section id=\"gpu\" class=\"plugin\">\n    <div class=\"gpu-name title\">\n        {{ vm.name }}\n    </div>\n    <div class=\"table\">\n        <div class=\"table-row\" ng-if=\"arguments.meangpu || vm.gpus.length === 1\">\n            <div class=\"table-cell text-left\">proc:</div>\n            <div class=\"table-cell\" ng-class=\"vm.getMeanDecoration('proc')\" ng-if=\"vm.mean.proc != null\">{{ vm.mean.proc |\n                number : 0 }}%\n            </div>\n            <div class=\"table-cell\" ng-if=\"vm.mean.proc == null\">N/A</div>\n        </div>\n        <div class=\"table-row\" ng-if=\"arguments.meangpu || vm.gpus.length === 1\">\n            <div class=\"table-cell text-left\">mem:</div>\n            <div class=\"table-cell\" ng-class=\"vm.getMeanDecoration('mem')\" ng-if=\"vm.mean.mem != null\">{{ vm.mean.mem | number :\n                0 }}%\n            </div>\n            <div class=\"table-cell\" ng-if=\"vm.mean.mem == null\">N/A</div>\n        </div>\n        <div class=\"table-row\" ng-if=\"!arguments.meangpu && vm.gpus.length > 1\" ng-repeat=\"gpu in vm.gpus\">\n            <div class=\"table-cell text-left\">\n                {{ gpu.gpu_id }}:\n                <span ng-class=\"vm.getDecoration(gpu.gpu_id, 'proc')\" ng-if=\"gpu.proc != null\">{{ gpu.proc | number : 0 }}%</span>\n                <span ng-if=\"gpu.proc == null\">N/A</span>\n                mem:\n                <span ng-class=\"vm.getDecoration(gpu.gpu_id, 'mem')\" ng-if=\"gpu.mem != null\">{{ gpu.mem | number : 0 }}%</span>\n                <span ng-if=\"gpu.mem == null\">N/A</span>\n            </div>\n        </div>\n    </div>\n</section>\n";
+var html = "<section id=\"gpu\" class=\"plugin\">\n    <div class=\"gpu-name title\">\n        {{ vm.name }}\n    </div>\n    <div class=\"table\">\n        <div class=\"table-row\" ng-if=\"arguments.meangpu || vm.gpus.length === 1\">\n            <div class=\"table-cell text-left\">proc:</div>\n            <div class=\"table-cell\" ng-class=\"vm.getMeanDecoration('proc')\" ng-if=\"vm.mean.proc != null\">{{ vm.mean.proc |\n                number : 0 }}%\n            </div>\n            <div class=\"table-cell\" ng-if=\"vm.mean.proc == null\">N/A</div>\n        </div>\n        <div class=\"table-row\" ng-if=\"arguments.meangpu || vm.gpus.length === 1\">\n            <div class=\"table-cell text-left\">mem:</div>\n            <div class=\"table-cell\" ng-class=\"vm.getMeanDecoration('mem')\" ng-if=\"vm.mean.mem != null\">{{ vm.mean.mem | number :\n                0 }}%\n            </div>\n            <div class=\"table-cell\" ng-if=\"vm.mean.mem == null\">N/A</div>\n        </div>\n        <div class=\"table-row\" ng-if=\"arguments.meangpu || vm.gpus.length === 1\">\n            <div class=\"table-cell text-left\">temperature::</div>\n            <div class=\"table-cell\" ng-class=\"vm.getMeanDecoration('temperature')\" ng-if=\"vm.mean.temperature != null\">{{ vm.mean.temperature | number\n                :\n                0 }}%\n            </div>\n            <div class=\"table-cell\" ng-if=\"vm.mean.temperature == null\">N/A</div>\n        </div>\n        <div class=\"table-row\" ng-if=\"!arguments.meangpu && vm.gpus.length > 1\" ng-repeat=\"gpu in vm.gpus\">\n            <div class=\"table-cell text-left\">\n                {{ gpu.gpu_id }}:\n                <span ng-class=\"vm.getDecoration(gpu.gpu_id, 'proc')\" ng-if=\"gpu.proc != null\">{{ gpu.proc | number : 0 }}%</span>\n                <span ng-if=\"gpu.proc == null\">N/A</span>\n                mem:\n                <span ng-class=\"vm.getDecoration(gpu.gpu_id, 'mem')\" ng-if=\"gpu.mem != null\">{{ gpu.mem | number : 0 }}%</span>\n                <span ng-if=\"gpu.mem == null\">N/A</span>\n                temp:\n                <span ng-class=\"vm.getDecoration(gpu.gpu_id, 'temperature')\" ng-if=\"gpu.temperature != null\">{{ gpu.temperature | number : 0 }}C</span>\n                <span ng-if=\"gpu.temperature == null\">N/A</span>\n            </div>\n        </div>\n    </div>\n</section>\n";
 window.angular.module('ng').run(['$templateCache', function(c) { c.put(path, html) }]);
 module.exports = path;
 
@@ -58995,7 +59046,8 @@ function GlancesPluginNetworkController($scope, $filter, GlancesStats, ARGUMENTS
                 'time_since_update': networkData['time_since_update'],
                 'cumulativeRx': networkData['cumulative_rx'],
                 'cumulativeTx': networkData['cumulative_tx'],
-                'cumulativeCx': networkData['cumulative_cx']
+                'cumulativeCx': networkData['cumulative_cx'],
+                'alias': networkData['alias'] !== undefined ? networkData['alias'] : null
             };
 
             vm.networks.push(network);
@@ -59011,7 +59063,7 @@ function GlancesPluginNetworkController($scope, $filter, GlancesStats, ARGUMENTS
 /***/ (function(module, exports) {
 
 var path = '/home/nicolargo/dev/glances/glances/outputs/static/js/components/plugin-network/view.html';
-var html = "<div class=\"table-row\">\n    <div class=\"table-cell text-left title\">NETWORK</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">Rx/s</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">Tx/s</div>\n\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\">Rx+Tx/s</div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">Rx</div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">Tx</div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\">Rx+Tx</div>\n</div>\n<div class=\"table-row\" ng-repeat=\"network in vm.networks track by network.interfaceName\">\n    <div class=\"table-cell text-left\">{{ network.interfaceName | min_size }}</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.rx / network.time_since_update | bytes) : (network.rx / network.time_since_update | bits) }}\n    </div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.tx / network.time_since_update | bytes) : (network.tx / network.time_since_update | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cx / network.time_since_update | bytes) : (network.cx / network.time_since_update | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeRx | bytes) : (network.cumulativeRx | bits) }}\n    </div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeTx | bytes) : (network.cumulativeTx | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeCx | bytes) : (network.cumulativeCx | bits) }}\n    </div>\n</div>\n";
+var html = "<div class=\"table-row\">\n    <div class=\"table-cell text-left title\">NETWORK</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">Rx/s</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">Tx/s</div>\n\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\">Rx+Tx/s</div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">Rx</div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">Tx</div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\">Rx+Tx</div>\n</div>\n<div class=\"table-row\" ng-repeat=\"network in vm.networks track by network.interfaceName\">\n    <div class=\"table-cell text-left\">{{ (network.alias ? network.alias : network.interfaceName) | min_size }}</div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.rx / network.time_since_update | bytes) : (network.rx / network.time_since_update | bits) }}\n    </div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.tx / network.time_since_update | bytes) : (network.tx / network.time_since_update | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"!vm.arguments.network_cumul && vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cx / network.time_since_update | bytes) : (network.cx / network.time_since_update | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeRx | bytes) : (network.cumulativeRx | bits) }}\n    </div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && !vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeTx | bytes) : (network.cumulativeTx | bits) }}\n    </div>\n\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\"></div>\n    <div class=\"table-cell\" ng-show=\"vm.arguments.network_cumul && vm.arguments.network_sum\">{{ vm.arguments.byte ?\n        (network.cumulativeCx | bytes) : (network.cumulativeCx | bits) }}\n    </div>\n</div>\n";
 window.angular.module('ng').run(['$templateCache', function(c) { c.put(path, html) }]);
 module.exports = path;
 

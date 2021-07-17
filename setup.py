@@ -41,7 +41,7 @@ def get_data_files():
 
 
 def get_install_requires():
-    requires = ['psutil>=5.3.0', 'future']
+    requires = ['psutil>=5.3.0', 'defusedxml', 'future']
     if sys.platform.startswith('win'):
         requires.append('bottle')
         requires.append('requests')
@@ -52,16 +52,14 @@ def get_install_requires():
 def get_install_extras_require():
     extras_require = {
         'action': ['chevron'],
-        # Zeroconf 0.19.1 is the latest one compatible with Python 2 (issue #1293)
         'browser': ['zeroconf==0.19.1' if PY2 else 'zeroconf>=0.19.1'],
         'cloud': ['requests'],
-        'cpuinfo': ['py-cpuinfo<=4.0.0'],
         'docker': ['docker>=2.0.0'],
         'export': ['bernhard', 'cassandra-driver', 'couchdb', 'elasticsearch',
-                   'influxdb>=1.0.0', 'kafka-python', 'pika', 'paho-mqtt', 'potsdb',
-                   'prometheus_client', 'pyzmq', 'statsd'],
+                   'graphitesender', 'influxdb>=1.0.0', 'kafka-python', 'pika',
+                   'paho-mqtt', 'potsdb', 'prometheus_client', 'pyzmq',
+                   'statsd'],
         'folders': ['scandir'],  # python_version<"3.5"
-        'gpu': ['py3nvml'],
         'graph': ['pygal'],
         'ip': ['netifaces'],
         'raid': ['pymdstat'],
@@ -71,6 +69,10 @@ def get_install_extras_require():
         'web': ['bottle', 'requests'],
         'wifi': ['wifi']
     }
+    if PY3:
+        extras_require['export'].append('influxdb-client')
+        extras_require['gpu'] = ['py3nvml']
+
     # Add automatically the 'all' target
     extras_require.update({'all': [i[0] for i in extras_require.values()]})
 

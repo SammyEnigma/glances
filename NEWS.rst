@@ -1,20 +1,119 @@
 ==============================================================================
-Glances Version 3
+                                Glances changelog
 ==============================================================================
 
+===============
+Version 3.2.2
+===============
+
+Under development, see roadmap here:
+
+    https://github.com/nicolargo/glances/milestone/51
+
+===============
+Version 3.2.1
+===============
+
+Bugs corrected:
+
+    * Glances 3.2.0 and influxdb export - Missing network data bug #1893
+
+Enhancement requests:
+
+    * Security audit - B411 enhancement (Monkey patch XML RPC Lib) #1025
+    * Also search glances.conf file in /usr/share/doc/glances/glances.conf #1862
+
+===============
+Version 3.2.0
+===============
+
+This release is a major version (but minor number because the API did not change). It focus on
+*CPU consumption*. I use `Flame profiling https://github.com/nicolargo/glances/wiki/Glances-FlameGraph`_
+and code optimization to *reduce CPU consumption from 20% to 50%* depending on your system.
+
+Enhancement and development requests:
+
+    * Improve CPU consumption
+        - Make the refresh rate configurable per plugin #1870
+        - Add caching for processing username and cmdline
+        - Correct and improve refresh time method
+        - Set refresh rate for global CPU percent
+        - Set the dafault refresh rate of system stats to 60 seconds
+        - Default refresh time for sensors is refresh rate * 2
+        - Improve history perf
+        - Change main curses loop
+        - Improve Docker client connection
+        - Update Flame profiling
+    * Get system sensors temperatures thresholds #1864
+    * Filter data exported from Docker plugin
+    * Make the Docker API connection timeout configurable
+    * Add --issue to Github issue template
+    * Add release-note in the Makefile
+    * Add some comments in cpu_percent
+    * Add some comments to the processlist.py
+    * Set minimal version for PSUtil to 5.3.0
+    * Add comment to default glances.conf file
+    * Improve code quality #820
+    * Update WebUI for security vuln
+
+Bugs corrected:
+
+    * Quit from help should return to main screen, not exit #1874
+    * AttributeError: 'NoneType' object has no attribute 'current' #1875
+    * Merge pull request #1873 from metayan/fix-history-add
+    * Correct filter
+    * Correct Flake8 issue in plugins
+    * Pressing Q to get rid of irq not working #1792
+    * Spelling correction in docs #1886
+    * Starting an alias with a number causes a crash #1885
+    * Network interfaces not applying in web UI #1884
+    * Docker containers information missing with Docker 20.10.x #1878
+    * Get system sensors temperatures thresholds #1864
+
+Contibutors for this version:
+
+    * Nicolargo
+    * Markus Pöschl
+    * Clifford W. Hansen
+    * Blake
+    * Yan
+
+===============
 Version 3.1.7
-=============
+===============
 
-This version is under development.
+Enhancements and bug corrected:
 
-Please have a look on the roadmap: https://github.com/nicolargo/glances/milestone/47
+    * Security audit - B411 #1025 (by nicolargo)
+    * GPU temperature not shown in webview #1849 (by nicolargo)
+    * Remove shell=True for actions (following Bandit issue report) #1851 (by nicolargo)
+    * Replace Travis by Github action #1850 (by nicolargo)
+    * '/api/3/processlist/pid/3936'use this api can't get right info,all messy code #1828 (by nicolargo)
+    * Refactor the way importants stats are displayed #1826 (by nicolargo)
+    * Re-apply the Add hide option to sensors plugin #1596 PR (by nicolargo)
+    * Smart plugin error while start glances as root #1806 (by nicolargo)
+    * Plugin quicklook takes more than one seconds to update #1820 (by nicolargo)
+    * Replace Pystache by Chevron 2/2  See #1817 (by nicolargo)
+    * Doc. No SMART screenshot. #1799 (by nicolargo)
+    * Update docs following PR #1798 (by nicolargo)
 
+Contributors for this version:
+
+    - Nicolargo
+    - Deosrc
+    - dependabot[bot]
+    - Michael J. Cohen
+    - Rui Chen
+    - Stefan Eßer
+    - Tuux
+
+===============
 Version 3.1.6.2
 ===============
 
 Bugs corrected:
 
-    * Remove bad merge for a non tested feature(see https://github.com/nicolargo/glances/issues/1787#issuecomment-774682954)
+    * Remove bad merge for a non tested feature (see https://github.com/nicolargo/glances/issues/1787#issuecomment-774682954)
 
 Version 3.1.6.1
 ===============
@@ -43,8 +142,8 @@ Enhancements and new features:
 
 Bugs corrected:
 
-    * Version tag for docker image packaging #1754 
-    * Unusual characters in cmdline cause lines to disappear and corrupt the display #1692 
+    * Version tag for docker image packaging #1754
+    * Unusual characters in cmdline cause lines to disappear and corrupt the display #1692
     * UnicodeDecodeError on any command with a utf8 character in its name #1676
     * Docker image is not up to date install #1662
     * Add option to set the strftime format #1785
@@ -86,7 +185,7 @@ Enhancements and new features:
 Bugs corrected:
 
     * Can't start server: unexpected keyword argument 'address' bug enhancement #1693
-    * class AmpsList method _build_amps_list() Windows fail (glances/amps_list.py) bug #1689 
+    * class AmpsList method _build_amps_list() Windows fail (glances/amps_list.py) bug #1689
     * Fix grammar in sensors documentation #1681
     * Reflect "used percent" user disk space for [fs] alert #1680
     * Bug: [fs] plugin needs to reflect user disk space usage needs test #1658

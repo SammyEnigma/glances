@@ -35,10 +35,10 @@ from glances.thresholds import GlancesThresholdCritical
 from glances.thresholds import GlancesThresholds
 from glances.plugins.glances_plugin import GlancesPlugin
 from glances.compat import subsample, range
+from glances.secure import secure_popen
 
 # Global variables
 # =================
-
 
 # Init Glances core
 core = GlancesMain()
@@ -343,12 +343,12 @@ class TestGlances(unittest.TestCase):
         # GlancesHistory
         from glances.history import GlancesHistory
         h = GlancesHistory()
-        h.add('a', 1)
-        h.add('a', 2)
-        h.add('a', 3)
-        h.add('b', 10)
-        h.add('b', 20)
-        h.add('b', 30)
+        h.add('a', 1, history_max_size=100)
+        h.add('a', 2, history_max_size=100)
+        h.add('a', 3, history_max_size=100)
+        h.add('b', 10, history_max_size=100)
+        h.add('b', 20, history_max_size=100)
+        h.add('b', 30, history_max_size=100)
         self.assertEqual(len(h.get()), 2)
         self.assertEqual(len(h.get()['a']), 3)
         h.reset()
@@ -375,6 +375,13 @@ class TestGlances(unittest.TestCase):
         self.assertLessEqual(bar.percent, bar.min_value)
         bar.percent = 101
         self.assertGreaterEqual(bar.percent, bar.max_value)
+
+    def test_100_secure(self):
+        """Test secure functions"""
+        print('INFO: [TEST_100] Secure functions')
+        self.assertEqual(secure_popen('echo -n TEST'), 'TEST')
+        self.assertEqual(secure_popen('echo FOO | grep FOO'), 'FOO\n')
+        self.assertEqual(secure_popen('echo -n TEST1 && echo -n TEST2'), 'TEST1TEST2')
 
     def test_999_the_end(self):
         """Free all the stats"""

@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2020 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2021 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -29,7 +29,7 @@ import sys
 # Global name
 # Version should start and end with a numerical char
 # See https://packaging.python.org/specifications/core-metadata/#version
-__version__ = '3.1.7_beta'
+__version__ = '3.2.2_beta0'
 __author__ = 'Nicolas Hennion <nicolas@nicolargo.com>'
 __license__ = 'LGPLv3'
 
@@ -44,7 +44,6 @@ except ImportError:
 # Note: others Glances libs will be imported optionally
 from glances.logger import logger
 from glances.main import GlancesMain
-from glances.globals import WINDOWS
 from glances.timer import Counter
 # Check locale
 try:
@@ -111,8 +110,8 @@ def start(config, args):
 
     # Start the main loop
     logger.debug("Glances started in {} seconds".format(start_duration.get()))
-    if args.stdout_issue:
-        # Serve once for issue/test mode 
+    if args.stdout_issue or args.stdout_apidoc:
+        # Serve once for issue/test mode
         mode.serve_issue()
     else:
         # Serve forever
@@ -142,9 +141,9 @@ def main():
     global core
 
     # Create the Glances main instance
+    # Glances options from the command line are readed first (in __init__)
+    # then the options from the config file (in parse_args)
     core = GlancesMain()
-    config = core.get_config()
-    args = core.get_args()
 
     # Glances can be ran in standalone, client or server mode
-    start(config=config, args=args)
+    start(config=core.get_config(), args= core.get_args())

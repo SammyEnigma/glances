@@ -20,10 +20,9 @@
 """Curses interface class."""
 from __future__ import unicode_literals
 
-import re
 import sys
 
-from glances.compat import to_ascii, nativestr, b, u, itervalues
+from glances.compat import nativestr, u, itervalues, enable, disable
 from glances.globals import MACOS, WINDOWS
 from glances.logger import logger
 from glances.events import glances_events
@@ -36,9 +35,11 @@ try:
     import curses.panel
     from curses.textpad import Textbox
 except ImportError:
-    logger.critical("Curses module not found. Glances cannot start in standalone mode.")
+    logger.critical(
+        "Curses module not found. Glances cannot start in standalone mode.")
     if WINDOWS:
-	    logger.critical("For Windows you can try installing windows-curses with pip install.")
+        logger.critical(
+            "For Windows you can try installing windows-curses with pip install.")
     sys.exit(1)
 
 
@@ -102,7 +103,7 @@ class _GlancesCurses(object):
         # "<" (left arrow) navigation through process sort
         # ">" (right arrow) navigation through process sort
         # 'UP' > Up in the server list
-        # 'DOWN' > Down in the server list    
+        # 'DOWN' > Down in the server list
     }
 
     _sort_loop = ['cpu_percent', 'memory_percent', 'username',
@@ -338,20 +339,37 @@ class _GlancesCurses(object):
     def get_key(self, window):
         # @TODO: Check issue #163
         ret = window.getch()
-        logger.debug("Keypressed (code: %s)" % ret)
         return ret
 
     def __catch_key(self, return_to_browser=False):
         # Catch the pressed key
         self.pressedkey = self.get_key(self.term_window)
+        if self.pressedkey == -1:
+            return -1
 
         # Actions (available in the global hotkey dict)...
+        logger.debug("Keypressed (code: {})".format(self.pressedkey))
         for hotkey in self._hotkeys:
             if self.pressedkey == ord(hotkey) and 'switch' in self._hotkeys[hotkey]:
-                setattr(self.args,
-                        self._hotkeys[hotkey]['switch'],
-                        not getattr(self.args,
-                                    self._hotkeys[hotkey]['switch']))
+                if self._hotkeys[hotkey]['switch'].startswith('enable_') or \
+                   self._hotkeys[hotkey]['switch'].startswith('disable_'):
+                    # Enable / Disable switch
+                    # Get the option name
+                    # Ex: disable_foo return foo
+                    #     enable_foo_bar return foo_bar
+                    option = '_'.join(
+                        self._hotkeys[hotkey]['switch'].split('_')[1:])
+                    if getattr(self.args,
+                               self._hotkeys[hotkey]['switch']):
+                        disable(self.args, option)
+                    else:
+                        enable(self.args, option)
+                else:
+                    # Others switchs options (with no enable_ or disable_)
+                    setattr(self.args,
+                            self._hotkeys[hotkey]['switch'],
+                            not getattr(self.args,
+                                        self._hotkeys[hotkey]['switch']))
             if self.pressedkey == ord(hotkey) and 'sort_key' in self._hotkeys[hotkey]:
                 glances_processes.set_sort_key(self._hotkeys[hotkey]['sort_key'],
                                                self._hotkeys[hotkey]['sort_key'] == 'auto')
@@ -649,9 +667,9 @@ class _GlancesCurses(object):
                 self.args.cursor_position]
             confirm = self.display_popup(
                 'Kill process: {} (pid: {}) ?\n\nConfirm ([y]es/[n]o): '.format(
-                    selected_process_raw['name'], 
-                    selected_process_raw['pid']), 
-                    popup_type='yesno')
+                    selected_process_raw['name'],
+                    selected_process_raw['pid']),
+                popup_type='yesno')
             if confirm.lower().startswith('y'):
                 try:
                     ret_kill = glances_processes.kill(selected_process_raw['pid'])
@@ -666,7 +684,6 @@ class _GlancesCurses(object):
             self.display_popup(
                 'Kill process only available in standalone mode')
         self.kill_process = False
-
 
         # Display graph generation popup
         if self.args.generate_graph:
@@ -1066,25 +1083,32 @@ class _GlancesCurses(object):
             duration = 0.1
 
         # Wait duration (in s) time
-        exitkey = False
+        isexitkey = False
         countdown = Timer(duration)
-        # Set the default timeout (in ms) for the getch method
-        self.term_window.timeout(int(duration * 1000))
-        while not countdown.finished() and not exitkey:
+        # Set the default timeout (in ms) between two getch
+        self.term_window.timeout(100)
+        while not countdown.finished() and not isexitkey:
             # Getkey
             pressedkey = self.__catch_key(return_to_browser=return_to_browser)
-            # Is it an exit key ?
-            exitkey = (pressedkey == ord('\x1b') or pressedkey == ord('q'))
+            isexitkey = (pressedkey == ord('\x1b') or pressedkey == ord('q'))
+
             if pressedkey == curses.KEY_F5:
-                # were asked to refresh
-                return exitkey
-            if not exitkey and pressedkey > -1:
+                # Were asked to refresh
+                return isexitkey
+
+            if isexitkey and self.args.help_tag:
+                # Quit from help should return to main screen, not exit #1874
+                self.args.help_tag = not self.args.help_tag
+                isexitkey = False
+                return isexitkey
+
+            if not isexitkey and pressedkey > -1:
                 # Redraw display
                 self.flush(stats, cs_status=cs_status)
                 # Overwrite the timeout with the countdown
-                self.term_window.timeout(int(countdown.get() * 1000))
+                self.wait(delay=int(countdown.get() * 1000))
 
-        return exitkey
+        return isexitkey
 
     def wait(self, delay=100):
         """Wait delay in ms"""

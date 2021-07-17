@@ -57,8 +57,20 @@ add new plugins or exports modules.
 Requirements
 ============
 
-- ``python 2.7,>=3.4``
+- ``python>=2.7`` or ``python>=3.4``
 - ``psutil>=5.3.0`` (better with latest version)
+- ``defusedxml`` (in order to monkey path xmlrpc)
+- ``future`` (for Python 2 support)
+
+*Note for Python 2.6 users*
+
+Glances no longer supports Python 2.6. Please upgrade
+to a minimum Python version of 2.7/3.4+ or downgrade to Glances 2.6.2 (last version
+with Python 2.6 support).
+
+*Deprecation warning note for Python 2.x users*
+
+Glances version 4.0 will no longer supports Python 2.x.
 
 Optional dependencies:
 
@@ -69,6 +81,7 @@ Optional dependencies:
 - ``couchdb`` (for the CouchDB export module)
 - ``docker`` (for the Docker monitoring support) [Linux/macOS-only]
 - ``elasticsearch`` (for the Elastic Search export module)
+- ``graphitesender`` (For the Graphite export module)
 - ``hddtemp`` (for HDD temperature monitoring support) [Linux-only]
 - ``influxdb`` (for the InfluxDB version 1 export module)
 - ``influxdb-client``  (for the InfluxDB version 2 export module) [Only for Python >= 3.6]
@@ -91,21 +104,65 @@ Optional dependencies:
 - ``wifi`` (for the wifi plugin) [Linux-only]
 - ``zeroconf`` (for the autodiscover mode)
 
-*Note for Python 2.6 users*
-
-Glances no longer supports Python 2.6. Please upgrade
-to a minimum Python version of 2.7/3.4+ or downgrade to Glances 2.6.2 (last version
-with Python 2.6 support).
-
-*Note for CentOS Linux 6 and 7 users*
-
-Python 2.7 and 3.4 are now available via SCL repositories. See:
-https://lists.centos.org/pipermail/centos-announce/2015-December/021555.html.
-
 Installation
 ============
 
 There are several methods to test/install Glances on your system. Choose your weapon!
+
+PyPI: The simple way
+--------------------
+
+Glances is on ``PyPI``. By using PyPI, you will be using the latest
+stable version.
+
+To install Glances, simply use ``pip``:
+
+.. code-block:: console
+
+    pip install --user glances
+
+*Note*: Python headers are required to install `psutil`_, a Glances
+dependencie. For example, on Debian/Ubuntu you need to install first
+the *python-dev* package (*python-devel* on Fedora/CentOS/RHEL).
+For Windows, just install psutil from the binary installation file.
+
+*Note 2 (for the Wifi plugin)*: If you want to use the Wifi plugin, you need
+to install the *wireless-tools* package on your system.
+
+You can also install the following libraries in order to use optional
+features (like the Web interface, exports modules...):
+
+.. code-block:: console
+
+    pip install --user 'glances[action,browser,cloud,cpuinfo,docker,export,folders,gpu,graph,ip,raid,snmp,web,wifi]'
+
+To upgrade Glances to the latest version:
+
+.. code-block:: console
+
+    pip install --user --upgrade glances
+    pip install --user --upgrade glances[...]
+
+If you need to install Glances in a specific user location, use:
+
+.. code-block:: console
+
+    export PYTHONUSERBASE=~/mylocalpath
+    pip install --user glances
+
+If you are administrator and want to install Glances for all users:
+
+.. code-block:: console
+
+    sudo pip install glances
+
+The current develop branch is also published to the test.pypi.org package index.
+If you want to test the develop version, enter:
+
+.. code-block:: console
+
+    pip install --user -i https://test.pypi.org/simple/ Glances
+
 
 Glances Auto Install script: the total way
 ------------------------------------------
@@ -126,85 +183,37 @@ or
 *Note*: This is only supported on some GNU/Linux distributions and Mac OS X.
 If you want to support other distributions, please contribute to `glancesautoinstall`_.
 
-PyPI: The simple way
---------------------
-
-Glances is on ``PyPI``. By using PyPI, you will be using the latest
-stable version.
-
-To install, simply use ``pip``:
-
-.. code-block:: console
-
-    pip install glances
-
-*Note*: Python headers are required to install `psutil`_. For example,
-on Debian/Ubuntu you need to install first the *python-dev* package.
-For Fedora/CentOS/RHEL install first *python-devel* package. For Windows,
-just install psutil from the binary installation file.
-
-*Note 2 (for the Wifi plugin)*: If you want to use the Wifi plugin, you need
-to install the *wireless-tools* package on your system.
-
-You can also install the following libraries in order to use optional
-features (like the Web interface, exports modules...):
-
-.. code-block:: console
-
-    pip install 'glances[action,browser,cloud,cpuinfo,docker,export,folders,gpu,graph,ip,raid,snmp,web,wifi]'
-
-To upgrade Glances to the latest version:
-
-.. code-block:: console
-
-    pip install --upgrade glances
-    pip install --upgrade glances[...]
-
-If you need to install Glances in a specific user location, use:
-
-.. code-block:: console
-
-    export PYTHONUSERBASE=~/mylocalpath
-    pip install --user glances
-
-The current develop branch is also published to the test.pypi.org package index.
-If you want to test the develop version, enter:
-
-.. code-block:: console
-
-    pip install -i https://test.pypi.org/simple/ Glances
-
 Docker: the funny way
 ---------------------
 
-A Glances container is available. It includes the latest development
-HEAD version. You can use it to monitor your server and all your other
-containers!
+Glances containers are availables. You can use it to monitor your
+server and all your other containers!
 
-Get the Glances container (latest develop branch):
+Get the Glances container:
 
 .. code-block:: console
 
-    docker pull nicolargo/glances:dev
+    docker pull nicolargo/glances:<version>
 
-Note, you can choose another branch with :
+Example:
 
-- nicolargo/glances:latest for the last master branch (included multiple architectures 386, amd64, arm/v7 and arm64)
-- nicolargo/glances:dev for the last develop branch (included multiple architectures 386, amd64, arm/v7 and arm64)
-- nicolargo/glances:<version> for the specific <version> (included multiple architectures 386, amd64, arm/v7 and arm64)
+- *nicolargo/glances:3.2.0* (or *nicolargo/glances:alpine-3.2.0*) for version 3.2.0 with minimal dependencies
+- *nicolargo/glances:3.2.0-full* for version 3.2.0 with full dependencies
+
+For a complete images list:
 
 Run the container in *console mode*:
 
 .. code-block:: console
 
-    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host --network host -it nicolargo/glances:dev
+    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host --network host -it nicolargo/glances:3.2.0-full
 
 Additionally, if you want to use your own glances.conf file, you can
 create your own Dockerfile:
 
 .. code-block:: console
 
-    FROM nicolargo/glances:dev
+    FROM nicolargo/glances:latest
     COPY glances.conf /glances/conf/glances.conf
     CMD python -m glances -C /glances/conf/glances.conf $GLANCES_OPT
 
@@ -213,7 +222,7 @@ docker run options:
 
 .. code-block:: console
 
-    docker run -v `pwd`/glances.conf:/glances/conf/glances.conf -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host -it nicolargo/glances:dev
+    docker run -v `pwd`/glances.conf:/glances/conf/glances.conf -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host -it nicolargo/glances:3.2.0-full
 
 Where \`pwd\`/glances.conf is a local directory containing your glances.conf file.
 
@@ -222,7 +231,7 @@ variable setting parameters for the glances startup command):
 
 .. code-block:: console
 
-    docker run -d --restart="always" -p 61208-61209:61208-61209 -e GLANCES_OPT="-w" -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host nicolargo/glances:dev
+    docker run -d --restart="always" -p 61208-61209:61208-61209 -e GLANCES_OPT="-w" -v /var/run/docker.sock:/var/run/docker.sock:ro --pid host nicolargo/glances:3.2.0-full
 
 GNU/Linux
 ---------
@@ -231,7 +240,6 @@ GNU/Linux
 able to install it using your favorite package manager. Be aware that
 when you use this method the operating system `package`_ for `Glances`
 may not be the latest version.
-
 
 FreeBSD
 -------
@@ -279,15 +287,6 @@ then run the following command:
 .. code-block:: console
 
     $ pip install glances
-
-Alternatively, you could clone the repository and install with the following command.
-
-.. code-block:: console
-
-    $ git clone https://github.com/nicolargo/glances.git
-    $ cd glances
-    $ python setup.py install
-
 
 Android
 -------
@@ -418,7 +417,7 @@ Gateway to other services
 
 Glances can export stats to: ``CSV`` file, ``JSON`` file, ``InfluxDB``, ``Cassandra``, ``CouchDB``,
 ``OpenTSDB``, ``Prometheus``, ``StatsD``, ``ElasticSearch``, ``RabbitMQ/ActiveMQ``,
-``ZeroMQ``, ``Kafka``, ``Riemann`` and ``RESTful`` server.
+``ZeroMQ``, ``Kafka``, ``Riemann``, ``Graphite`` and ``RESTful`` server.
 
 How to contribute ?
 ===================
